@@ -17,7 +17,7 @@ from caselawclient.errors import (
     OnlySupportedOnVersion,
 )
 from caselawclient.identifier_resolution import IdentifierResolutions
-from caselawclient.models.documents.versions import AnnotationDataDict
+from caselawclient.models.documents.versions import AnnotationDataDict, VersionAnnotation, VersionType
 from caselawclient.models.identifiers import Identifier
 from caselawclient.models.identifiers.exceptions import IdentifierValidationException
 from caselawclient.models.identifiers.fclid import FindCaseLawIdentifier, FindCaseLawIdentifierSchema
@@ -484,6 +484,29 @@ class Document:
             return document_fclid
 
         return None
+
+    def save(self, message: Optional[str] = None) -> None:
+        """
+        Save the document's XML representation back to MarkLogic as a new version.
+
+        Creates a new version with type EDIT, recording the changes made to the document.
+
+        :param message: Optional human-readable message describing the changes made
+        :raises requests.RequestException: If the save operation fails
+        """
+        # Create annotation for this version
+        annotation = VersionAnnotation(
+            version_type=VersionType.EDIT,
+            automated=False,
+            message=message,
+        )
+
+        # Update the document XML in MarkLogic
+        self.api_client.update_document_xml(
+            self.uri,
+            self.body._xml.xml_as_tree,
+            annotation,
+        )
 
     def publish(self) -> None:
         """
