@@ -57,6 +57,7 @@ from .exceptions import (
     CannotPublishUnpublishableDocument,
     CannotRestoreDocumentWithoutConsignmentReference,
     CannotRestorePublishedDocument,
+    DocumentNotPersistedError,
     DocumentNotSafeForDeletion,
 )
 from .statuses import DOCUMENT_STATUS_HOLD, DOCUMENT_STATUS_IN_PROGRESS, DOCUMENT_STATUS_NEW, DOCUMENT_STATUS_PUBLISHED
@@ -167,6 +168,17 @@ class Document:
         self._initialise_identifiers()
         self._initialise_metadata_fields()
         self._initialise_metadata()
+        self._persisted = True
+
+    @property
+    def is_persisted(self) -> bool:
+        return self._persisted
+
+    def _require_persisted(self) -> None:
+        if not self._persisted:
+            raise DocumentNotPersistedError(
+                f"Document {self.uri} is not persisted in MarkLogic; call save() before using MarkLogic-backed APIs."
+            )
 
     def __repr__(self) -> str:
         name = self.metadata.title.value or "un-named"
