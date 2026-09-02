@@ -3,7 +3,7 @@ import logging
 import os
 import warnings
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, ClassVar, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Optional, Self
 
 from ds_caselaw_utils import courts
 from ds_caselaw_utils.courts import CourtNotFoundException
@@ -32,9 +32,11 @@ from caselawclient.models.documents.metadata.registry import (
 )
 from caselawclient.models.documents.versions import AnnotationDataDict, VersionAnnotation, VersionType
 from caselawclient.models.identifiers import Identifier
+from caselawclient.models.identifiers.collection import IdentifiersCollection
 from caselawclient.models.identifiers.exceptions import IdentifierValidationException
 from caselawclient.models.identifiers.fclid import FindCaseLawIdentifier, FindCaseLawIdentifierSchema
 from caselawclient.models.identifiers.unpacker import unpack_all_identifiers_from_etree
+from caselawclient.models.neutral_citation_mixin import NeutralCitationMixin
 from caselawclient.models.utilities import VersionsDict, extract_version, render_versions
 from caselawclient.models.utilities.aws import (
     ParserInstructionsDict,
@@ -49,7 +51,7 @@ from caselawclient.models.utilities.aws import (
     restore_assets_from_consignment_archive,
     unpublish_documents,
 )
-from caselawclient.types import DocumentURIString, SuccessFailureMessageTuple, TDRMetadataDict
+from caselawclient.types import DocumentURIString, SuccessFailureMessageTuple, TDRMetadataDict, mint_document_uri
 
 from .body import DocumentBody
 from .exceptions import (
@@ -57,6 +59,7 @@ from .exceptions import (
     CannotPublishUnpublishableDocument,
     CannotRestoreDocumentWithoutConsignmentReference,
     CannotRestorePublishedDocument,
+    DocumentAlreadyExistsError,
     DocumentNotPersistedError,
     DocumentNotSafeForDeletion,
 )
@@ -179,6 +182,41 @@ class Document:
             raise DocumentNotPersistedError(
                 f"Document {self.uri} is not persisted in MarkLogic; call save() before using MarkLogic-backed APIs."
             )
+
+    @classmethod
+    def _assemble_from_body(
+        cls,
+        body: DocumentBody,
+        api_client: "MarklogicApiClient",
+        uri: DocumentURIString | None = None,
+    ) -> Self:
+        doc = cls.__new__(cls)
+        doc.uri = uri if uri is not None else mint_document_uri()
+        doc.api_client = api_client
+        doc.body = body
+        doc.identifiers = IdentifiersCollection()
+        doc.metadata_fields = MetadataFieldsCollection()
+        doc._initialise_metadata()  # noqa: SLF001
+        doc._persisted = False  # noqa: SLF001
+        if isinstance(doc, NeutralCitationMixin):
+            doc._initialise_neutral_citation_validation(cls.document_noun)  # noqa: SLF001
+        return doc
+
+    @classmethod
+    def from_xml(
+        cls,
+        body: DocumentBody,
+        api_client: "MarklogicApiClient",
+        uri: DocumentURIString | None = None,
+    ) -> Self:
+        if cls is Document:
+            raise TypeError("Use Judgment.from_xml, PressSummary.from_xml, ParserLog.from_xml, or document_from_xml().")
+        resolved_uri = uri if uri is not None else mint_document_uri()
+        if api_client.document_exists(resolved_uri):
+            raise DocumentAlreadyExistsError(
+                f"Document {resolved_uri} already exists; load it with {cls.__name__}(uri, api_client) instead."
+            )
+        return cls._assemble_from_body(body, api_client, uri=resolved_uri)
 
     def __repr__(self) -> str:
         name = self.metadata.title.value or "un-named"
