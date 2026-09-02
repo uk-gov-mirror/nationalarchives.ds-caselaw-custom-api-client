@@ -44,6 +44,7 @@ class Judgment(NeutralCitationMixin, Document):
         """
         Attempt to fetch a linked press summary, and return it, if it exists
         """
+        self._require_persisted()
         try:
             uri = DocumentURIString(self.uri + "/press-summary/1")
             if not TYPE_CHECKING:  # This isn't nice, but will be cleaned up when we refactor how related documents work
