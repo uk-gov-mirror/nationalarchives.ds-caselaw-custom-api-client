@@ -628,29 +628,49 @@ class Document:
         logger.info("Document already has an FCLID")
         return None
 
-    def save(self, message: str) -> None:
+    def save(
+        self,
+        message: str,
+        *,
+        version_type: VersionType = VersionType.EDIT,
+        automated: bool = False,
+    ) -> None:
         """
         Save the document's XML representation back to MarkLogic as a new version.
 
-        Creates a new version with type EDIT, recording the changes made to the document.
+        Inserts when this object is not yet persisted; otherwise updates the existing MarkLogic document.
         Also materialises body-derived DOCUMENT metadata claims and persists them.
 
         :param message: Human-readable message describing the changes made.
         """
-        # Create annotation for this version
+        if type(self) is Document:
+            raise TypeError("Use a concrete document class such as Judgment, PressSummary, or ParserLog to save.")
+
         annotation = VersionAnnotation(
-            version_type=VersionType.EDIT,
-            automated=False,
+            version_type=version_type,
+            automated=automated,
             message=message,
         )
 
-        # Update the document XML in MarkLogic
-        self.api_client.update_document_xml(
-            self.uri,
-            self.body.content_as_xml_tree,
-            annotation,
-        )
-        self.materialise_metadata_claims()
+        if not self._persisted:
+            if self.document_exists():
+                raise DocumentAlreadyExistsError(
+                    f"Document {self.uri} already exists; load it with {type(self).__name__}(uri, api_client) instead."
+                )
+            self.api_client.insert_document_xml(
+                self.uri,
+                self.body.content_as_xml_tree,
+                type(self),
+                annotation,
+            )
+        else:
+            self.api_client.update_document_xml(
+                self.uri,
+                self.body.content_as_xml_tree,
+                annotation,
+            )
+        self._materialise_metadata_claims()
+        self._persisted = True
 
     @property
     def needs_metadata_materialisation(self) -> bool:
@@ -667,6 +687,16 @@ class Document:
         for field in self.metadata:
             field.materialise_body_claims()
         self.save_metadata_fields()
+        self.api_client.set_property(
+            self.uri,
+            LATEST_METADATA_MATERIALISATION_VERSION_PROPERTY,
+            CURRENT_METADATA_MATERIALISATION_VERSION,
+        )
+
+    def _materialise_metadata_claims(self) -> None:
+        for field in self.metadata:
+            field.materialise_body_claims()
+        self.api_client.set_property_as_node(self.uri, "metadata_fields", self.metadata_fields.as_etree)
         self.api_client.set_property(
             self.uri,
             LATEST_METADATA_MATERIALISATION_VERSION_PROPERTY,
