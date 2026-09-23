@@ -3,14 +3,14 @@ import os
 import pytest
 from lxml import etree
 
-from caselawclient.models.documents.body import DEFAULT_NAMESPACES, FRBR_WORK_CHILDREN_ORDER
+from caselawclient.models.documents.body_metadata.akn import FRBR_WORK_CHILDREN_ORDER
 from caselawclient.models.documents.xml import (
     AKN_META_CHILDREN_ORDER,
     XML,
     NonXMLDocumentError,
     _local_name_in_namespace,
 )
-from caselawclient.xml_helpers import Element
+from caselawclient.xml_helpers import DEFAULT_NAMESPACES, Element
 
 AKN_NS = "http://docs.oasis-open.org/legaldocml/ns/akn/3.0"
 META_XPATH = "/akn:akomaNtoso/akn:judgment/akn:meta"
